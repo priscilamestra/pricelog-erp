@@ -1,4 +1,4 @@
-# ERP de Gestão e Monitoramento Competitivo de Preços
+## ERP de Gestão e Monitoramento Competitivo de Preços
 
 Sistema ERP desenvolvido para empresas que precisam gerenciar seu catálogo de produtos e monitorar automaticamente os preços praticados pela concorrência no e-commerce brasileiro. O sistema resolve um problema real de inteligência comercial: saber, sem trabalho manual, se os preços da empresa estão competitivos, com margem saudável e alinhados ao mercado — produto a produto, em escala.
 
