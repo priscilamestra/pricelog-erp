@@ -1,0 +1,13 @@
+[project]
+name = "erp-cadastro-sistema"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "pandas>=3.0.3",
+    "playwright>=1.60.0",
+    "psycopg2>=2.9.12",
+    "streamlit>=1.57.0",
+]

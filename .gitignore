@@ -1,0 +1,10 @@
+# Pastas de ambiente e caches geradas pelo uv e python
+.venv/
+__pycache__/
+.streamlit/secrets.toml
+.streamlit/
+.python-version
+
+# Outros arquivos temporários
+.DS_Store
+.vscode/
