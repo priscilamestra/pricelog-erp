@@ -3,6 +3,7 @@ import random
 import re
 import time
 import requests
+import unicodedata
 from difflib import SequenceMatcher
 from playwright.async_api import async_playwright
 
@@ -99,71 +100,239 @@ def _mediana(valores: list) -> float:
 # Isso elimina falsos positivos sem depender de thresholds arbitrários de valor.
 # ==============================================================================
 
+_VARIANTES_MODELO = {
+    "pro",
+    "max",
+    "plus",
+    "ultra",
+    "mini",
+    "air",
+    "lite",
+    "fe",
+}
+
+
+def _normalizar_texto_produto(texto: str) -> str:
+    texto = str(texto).lower()
+
+    # Remove acentos
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(
+        caractere
+        for caractere in texto
+        if not unicodedata.combining(caractere)
+    )
+
+    # Normalizações equivalentes
+    texto = texto.replace("+", " plus ")
+    texto = texto.replace("-", " ")
+
+    # Português / inglês
+    texto = re.sub(r"\bsem\s+fio\b", "wireless", texto)
+    texto = re.sub(r"\bcom\s+fio\b", "wired", texto)
+    texto = re.sub(r"\bwi\s+fi\b", "wifi", texto)
+
+    # 256 GB → 256gb
+    # 1 TB → 1tb
+    texto = re.sub(r"(\d+)\s*(gb|tb)\b", r"\1\2", texto)
+
+    # Remove pontuação restante
+    texto = re.sub(r"[^\w\s]", " ", texto)
+    texto = re.sub(r"\s+", " ", texto).strip()
+
+    return texto
+
+
+def _identificador_presente(
+    identificador: str,
+    palavras_titulo: set[str],
+) -> bool:
+    if identificador in palavras_titulo:
+        return True
+
+    # Permite casos como KB500 → KB500BR
+    if len(identificador) >= 4:
+        return any(
+            identificador in palavra
+            for palavra in palavras_titulo
+        )
+
+    return False
+
+
+def _match_estrutural(titulo: str, query: str) -> bool:
+    titulo_norm = _normalizar_texto_produto(titulo)
+    query_norm = _normalizar_texto_produto(query)
+
+    palavras_titulo = set(titulo_norm.split())
+    palavras_query = set(query_norm.split())
+
+    # Exige números/modelos presentes na busca
+    identificadores_query = {
+        palavra
+        for palavra in palavras_query
+        if any(caractere.isdigit() for caractere in palavra)
+    }
+
+    for identificador in identificadores_query:
+        if not _identificador_presente(
+            identificador,
+            palavras_titulo,
+        ):
+            return False
+
+    # Exige a mesma variante do produto
+    variantes_query = palavras_query & _VARIANTES_MODELO
+    variantes_titulo = palavras_titulo & _VARIANTES_MODELO
+
+    if variantes_query != variantes_titulo:
+        return False
+
+    # Evita wireless ↔ wired
+    if "wireless" in palavras_query and "wired" in palavras_titulo:
+        return False
+
+    if "wired" in palavras_query and "wireless" in palavras_titulo:
+        return False
+
+    # Capacidade de armazenamento
+    # Ex.: busca 128GB não aceita anúncio "128GB / 256GB / 512GB"
+    capacidades_query = {
+        palavra
+        for palavra in palavras_query
+        if re.fullmatch(r"\d+(gb|tb)", palavra)
+    }
+
+    capacidades_titulo = {
+        palavra
+        for palavra in palavras_titulo
+        if re.fullmatch(r"\d+(gb|tb)", palavra)
+    }
+
+    if capacidades_query:
+        # Ignora capacidades muito pequenas que provavelmente são RAM
+        capacidades_titulo_armazenamento = {
+            capacidade
+            for capacidade in capacidades_titulo
+            if capacidade.endswith("tb")
+            or int(capacidade.removesuffix("gb")) >= 64
+        }
+
+        if capacidades_titulo_armazenamento != capacidades_query:
+            return False
+
+    return True
+
+
 def _similaridade_query(titulo: str, query: str) -> float:
-    """
-    Score de similaridade entre o título do produto e a query de busca.
-    Combina dois critérios:
-      1. SequenceMatcher ratio (similaridade de sequência de caracteres)
-      2. Cobertura de palavras: proporção das palavras da query presentes no título
+    titulo_norm = _normalizar_texto_produto(titulo)
+    query_norm = _normalizar_texto_produto(query)
 
-    O score final é o maior entre os dois, garantindo que produtos que contêm
-    todas as palavras-chave da busca sejam considerados relevantes mesmo que a
-    ordem ou o formato sejam diferentes.
-    """
-    titulo_lower = titulo.lower()
-    query_lower  = query.lower()
+    # Primeiro verifica modelo/variante.
+    if not _match_estrutural(titulo_norm, query_norm):
+        return 0.0
 
-    # Score 1: similaridade de sequência
-    ratio = SequenceMatcher(None, titulo_lower, query_lower).ratio()
+    # Similaridade geral do texto
+    ratio = SequenceMatcher(
+        None,
+        titulo_norm,
+        query_norm,
+    ).ratio()
 
-    # Score 2: cobertura de palavras-chave da query no título
-    palavras_query  = set(re.sub(r'[^\w\s]', '', query_lower).split())
-    palavras_titulo = set(re.sub(r'[^\w\s]', '', titulo_lower).split())
+    palavras_query = set(query_norm.split())
+    palavras_titulo = set(titulo_norm.split())
+
     if palavras_query:
-        cobertura = len(palavras_query & palavras_titulo) / len(palavras_query)
+        cobertura = (
+            len(palavras_query & palavras_titulo)
+            / len(palavras_query)
+        )
     else:
         cobertura = 0.0
 
     return max(ratio, cobertura * 0.95)
 
 
-def _filtrar_precos_por_relevancia(
-    pares: list[tuple[str, float]], query: str, min_sim: float = 0.28
-) -> list[float]:
-    """
-    Recebe lista de (título, preço) extraídos da página e a query de busca.
-    Retorna apenas os preços de produtos com similaridade >= min_sim com a query,
-    desde que o melhor match ultrapasse o limiar.
+def _produto_nao_novo(titulo: str) -> bool:
+    titulo_norm = _normalizar_texto_produto(titulo)
 
-    Se nenhum produto for suficientemente similar, retorna [] — o chamador
-    interpretará como "não encontrado" e não usará preços irrelevantes.
-    """
+    termos_nao_novos = {
+        "usado",
+        "seminovo",
+        "semi novo",
+        "recondicionado",
+        "refurbished",
+        "renewed",
+        "open box",
+        "caixa aberta",
+        "como novo",
+        "vitrine",
+    }
+
+    if any(termo in titulo_norm for termo in termos_nao_novos):
+        return True
+
+    # Ex.: "bateria 99%" geralmente indica aparelho usado
+    if re.search(r"\bbateria\s*\d{2,3}\s*%", titulo_norm):
+        return True
+
+    return False
+
+
+def _filtrar_precos_por_relevancia(
+    pares: list[tuple[str, float]],
+    query: str,
+    min_sim: float = 0.28,
+) -> list[float]:
     if not pares:
         return []
 
     scored = []
+
     for titulo, preco in pares:
-        if preco and preco > 0:
-            sim = _similaridade_query(titulo, query)
-            scored.append((sim, preco))
-            print(f"    [{sim:.2f}] {titulo[:60]!r} → R$ {preco:.2f}")
+        if not preco or preco <= 0:
+            continue
+
+        # Ignora usados, seminovos e recondicionados
+        if _produto_nao_novo(titulo):
+            print(f"    [DESCARTADO — não novo] {titulo[:60]!r}")
+            continue
+
+        sim = _similaridade_query(titulo, query)
+        scored.append((sim, preco))
+
+        print(
+            f"    [{sim:.2f}] {titulo[:60]!r} "
+            f"→ R$ {preco:.2f}"
+        )
 
     if not scored:
         return []
 
-    best_sim = max(s for s, _ in scored)
+    best_sim = max(sim for sim, _ in scored)
 
-    # Nenhum produto da página é similar o suficiente à query
     if best_sim < min_sim:
-        print(f"  ⚠️  Melhor similaridade ({best_sim:.2f}) abaixo do limiar ({min_sim}). Descartando.")
+        print(
+            f"  ⚠️ Melhor similaridade ({best_sim:.2f}) "
+            f"abaixo do limiar ({min_sim}). Descartando."
+        )
         return []
 
-    # Mantém produtos com pelo menos 50% do score do melhor resultado
     threshold = max(min_sim, best_sim * 0.50)
-    relevantes = [preco for sim, preco in scored if sim >= threshold]
-    print(f"  → {len(relevantes)}/{len(scored)} preços após filtro de relevância (threshold={threshold:.2f})")
-    return relevantes
 
+    relevantes = [
+        preco
+        for sim, preco in scored
+        if sim >= threshold
+    ]
+
+    print(
+        f"  → {len(relevantes)}/{len(scored)} preços "
+        f"após filtro de relevância "
+        f"(threshold={threshold:.2f})"
+    )
+
+    return relevantes
 
 # ==============================================================================
 # EXTRAÇÃO DE PARES (TÍTULO, PREÇO) POR SITE VIA JAVASCRIPT
@@ -275,7 +444,7 @@ def _buscar_preco_serpapi(nome_produto: str, api_key: str) -> tuple[float | None
             "api_key": api_key,
             "num":     "10",
         }
-        resp = requests.get("https://serpapi.com/search", params=params, timeout=15)
+        resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
 
         if resp.status_code == 401:
             print("[SerpAPI] ❌ Chave inválida.")
@@ -311,20 +480,24 @@ def _buscar_preco_serpapi(nome_produto: str, api_key: str) -> tuple[float | None
 
         print(f"[SerpAPI] '{nome_produto}' → {len(pares)} pares título/preço")
 
-        # Filtra por relevância
+                # Filtra por relevância
         valores = _filtrar_precos_por_relevancia(pares, nome_produto)
 
-        # Fallback: usa todos os preços se filtro de relevância descartar tudo
-        # (acontece quando os títulos da SerpAPI estão em outro idioma)
         if not valores:
-            valores = [p for _, p in pares]
+            print(
+                f"[SerpAPI] Nenhum resultado compatível com '{nome_produto}'"
+            )
+            return None, "⚪ Não encontrado"
 
         valores = filtrar_precos_inteligente(valores)
         if not valores:
             return None, "⚪ Não encontrado"
 
         resultado = _mediana(valores)
-        print(f"[SerpAPI] '{nome_produto}' → mediana R$ {resultado:.2f} (de {sorted(valores)[:5]})")
+        print(
+            f"[SerpAPI] '{nome_produto}' → mediana R$ {resultado:.2f} "
+            f"(de {sorted(valores)[:5]})"
+        )
         return resultado, "ok"
 
     except Exception as e:
@@ -337,7 +510,7 @@ def testar_serpapi(api_key: str, produto: str = "Logitech MX Master 3S") -> dict
     try:
         params = {"engine":"google_shopping","q":produto,"gl":"br","hl":"pt",
                   "api_key":api_key,"num":"5"}
-        resp = requests.get("https://serpapi.com/search", params=params, timeout=15)
+        resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
         data = resp.json()
         return {
             "status_http":      resp.status_code,

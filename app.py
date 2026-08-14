@@ -4,7 +4,7 @@ import database as db
 import rpa_monitor
 import time
 
-st.set_page_config(page_title="Nexus ERP", page_icon="🖥️", layout="wide")
+st.set_page_config(page_title="Pricelog ERP", page_icon="💲", layout="wide")
 
 st.markdown("""
     <style>
@@ -63,7 +63,7 @@ def _get_serpapi_key() -> str | None:
 
 # ── LOGIN ───────────────────────────────────────────────────────────────────
 if not st.session_state['autenticado']:
-    st.title("🔒 Nexus ERP")
+    st.title("🔒 Pricelog ERP")
     st.markdown("Insira suas credenciais para acessar o sistema.")
     with st.form("login_form"):
         email = st.text_input("E-mail")
@@ -80,9 +80,9 @@ if not st.session_state['autenticado']:
 # ── DASHBOARD ───────────────────────────────────────────────────────────────
 col_titulo, col_sair = st.columns([8.5, 1.5])
 with col_titulo:
-    st.title("Nexus Dashboard", anchor=False)
+    st.title("Pricelog Dashboard", anchor=False)
 with col_sair:
-    if st.button("Sair (Log out)", width="stretch"):
+    if st.button("Sign out", width="stretch"):
         st.session_state['autenticado'] = False
         st.rerun()
 
@@ -204,90 +204,186 @@ with aba_gerenciar:
     st.subheader("Gerenciamento de Registro", anchor=False)
 
     if not df_produtos.empty:
-        gen = st.session_state['gerenciar_gen']
-        id_editar = st.selectbox(
-            "Selecione o ID do produto que deseja atualizar ou excluir:",
-            df_produtos["id"].tolist(), index=None,
-            placeholder="Digite ou selecione um ID", key=f"sel_id_{gen}")
+        gen = st.session_state["gerenciar_gen"]
+
+        opcoes_produtos = {
+            f"ID {row['id']} — {row['codigo']}": row["id"]
+            for _, row in df_produtos.iterrows()
+        }
+
+        produto_selecionado = st.selectbox(
+            "Busque pelo ID ou código do produto:",
+            options=list(opcoes_produtos.keys()),
+            index=None,
+            placeholder="Digite um ID ou código",
+            key=f"sel_id_{gen}",
+        )
+
+        id_editar = (
+            opcoes_produtos[produto_selecionado]
+            if produto_selecionado is not None
+            else None
+        )
 
         if id_editar is not None:
             p = df_produtos[df_produtos["id"] == id_editar].iloc[0]
-            v = {col: p[col] for col in ["codigo","marca","tipo","modelo",
-                                          "categoria","preco_unitario","custo","obs"]}
+            v = {
+                col: p[col]
+                for col in [
+                    "codigo",
+                    "marca",
+                    "tipo",
+                    "modelo",
+                    "categoria",
+                    "preco_unitario",
+                    "custo",
+                    "obs",
+                ]
+            }
             v["preco_unitario"] = float(v["preco_unitario"])
-            v["custo"]          = float(v["custo"])
+            v["custo"] = float(v["custo"])
         else:
-            v = {"codigo":"","marca":"","tipo":"","modelo":"","categoria":"",
-                 "preco_unitario":None,"custo":None,"obs":""}
+            v = {
+                "codigo": "",
+                "marca": "",
+                "tipo": "",
+                "modelo": "",
+                "categoria": "",
+                "preco_unitario": None,
+                "custo": None,
+                "obs": "",
+            }
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            e_cod       = st.text_input("Código",    value=v["codigo"])
-            e_marca     = st.text_input("Marca",     value=v["marca"])
-            e_tipo      = st.text_input("Tipo",      value=v["tipo"])
+            e_cod = st.text_input("Código", value=v["codigo"])
+            e_marca = st.text_input("Marca", value=v["marca"])
+            e_tipo = st.text_input("Tipo", value=v["tipo"])
+
         with c2:
-            e_modelo    = st.text_input("Modelo",    value=v["modelo"])
+            e_modelo = st.text_input("Modelo", value=v["modelo"])
             e_categoria = st.text_input("Categoria", value=v["categoria"])
+
         with c3:
-            e_preco = st.number_input("Preço de Venda (R$)", value=v["preco_unitario"],
-                                       step=0.01, placeholder="0,00")
-            e_custo = st.number_input("Custo (R$)", value=v["custo"],
-                                       step=0.01, placeholder="0,00")
-        e_obs = st.text_area("Observações", value=v["obs"], key=f"obs_{gen}_{id_editar}")
+            e_preco = st.number_input(
+                "Preço de Venda (R$)",
+                value=v["preco_unitario"],
+                step=0.01,
+                placeholder="0,00",
+            )
+            e_custo = st.number_input(
+                "Custo (R$)",
+                value=v["custo"],
+                step=0.01,
+                placeholder="0,00",
+            )
+
+        e_obs = st.text_area(
+            "Observações",
+            value=v["obs"],
+            key=f"obs_{gen}_{id_editar}",
+        )
 
         st.markdown("<br>", unsafe_allow_html=True)
+
         b1, b2, b3 = st.columns(3)
         aviso = st.empty()
+
         with b1:
-            if st.button("Salvar alterações", type="primary", width="stretch"):
+            if st.button(
+                "Salvar alterações",
+                type="primary",
+                width="stretch",
+            ):
                 if id_editar is not None:
-                    db.atualizar_produto(id_editar, e_cod, e_marca, e_tipo,
-                                         e_modelo, e_categoria, e_preco, e_custo, e_obs)
+                    db.atualizar_produto(
+                        id_editar,
+                        e_cod,
+                        e_marca,
+                        e_tipo,
+                        e_modelo,
+                        e_categoria,
+                        e_preco,
+                        e_custo,
+                        e_obs,
+                    )
                     aviso.success("Alterações salvas!")
                     time.sleep(1)
-                    st.session_state['gerenciar_gen'] += 1
+                    st.session_state["gerenciar_gen"] += 1
                     st.rerun()
                 else:
-                    aviso.warning("Selecione um ID primeiro!")
+                    aviso.warning("Selecione um produto primeiro!")
+
         with b2:
-            if st.button("Limpar formulário", type="primary", width="stretch"):
-                st.session_state['gerenciar_gen'] += 1
+            if st.button(
+                "Limpar formulário",
+                type="primary",
+                width="stretch",
+            ):
+                st.session_state["gerenciar_gen"] += 1
                 st.rerun()
+
         with b3:
-            if st.button("Excluir item", type="primary", width="stretch"):
+            if st.button(
+                "Excluir item",
+                type="primary",
+                width="stretch",
+            ):
                 if id_editar is not None:
                     db.deletar_produto(id_editar)
                     aviso.success("Item removido!")
                     time.sleep(1)
-                    st.session_state['gerenciar_gen'] += 1
+                    st.session_state["gerenciar_gen"] += 1
                     st.rerun()
                 else:
-                    aviso.warning("Selecione um ID primeiro!")
+                    aviso.warning("Selecione um produto primeiro!")
 
     st.write("---")
     st.subheader("Produtos Cadastrados", anchor=False)
 
     if not df_produtos.empty:
         col_busca, col_aviso_ger = st.columns([5, 4])
+
         with col_busca:
-            termo = st.text_input("Buscar:", placeholder=" 🔍",
-                                   label_visibility="collapsed", key="busca_ger")
+            termo = st.text_input(
+                "Buscar:",
+                placeholder=" 🔍",
+                label_visibility="collapsed",
+                key="busca_ger",
+            )
+
         df_ex = df_produtos.rename(columns=COLS_EXIBICAO_COM_ID)
+
         if termo:
-            tl   = termo.lower()
+            tl = termo.lower()
             mask = df_ex.astype(str).apply(
-                lambda c: c.str.lower().str.contains(tl, na=False)).any(axis=1)
+                lambda c: c.str.lower().str.contains(tl, na=False)
+            ).any(axis=1)
+
             df_fil = df_ex[mask]
+
             if df_fil.empty:
                 av = col_aviso_ger.empty()
                 av.info(f'🔍 Nenhum produto encontrado para "{termo}".')
                 time.sleep(3)
                 av.empty()
-                st.dataframe(df_ex, width="stretch", hide_index=True)
+                st.dataframe(
+                    df_ex,
+                    width="stretch",
+                    hide_index=True,
+                )
             else:
-                st.dataframe(df_fil, width="stretch", hide_index=True)
+                st.dataframe(
+                    df_fil,
+                    width="stretch",
+                    hide_index=True,
+                )
         else:
-            st.dataframe(df_ex, width="stretch", hide_index=True)
+            st.dataframe(
+                df_ex,
+                width="stretch",
+                hide_index=True,
+            )
     else:
         st.info("Nenhuma mercadoria localizada na base ativa.")
 
@@ -295,12 +391,11 @@ with aba_gerenciar:
 # 3. AUTOMAÇÕES
 # ════════════════════════════════════════════════════════════════════════════
 with aba_automacoes:
-    st.subheader("📡 Monitor de Preços", anchor=False)
-    st.markdown("Analisa a competitividade dos seus preços automaticamente.")
+    st.subheader("Monitor de Preços Online", anchor=False)
 
     modo = st.radio("Modo de análise:",
-        ["⚡ Rápido (Google Shopping — todos os produtos)",
-         "🔍 Detalhado (Navegador — até 10 produtos)"],
+        ["⚡ Rápido (Google Shopping - API)",
+         "🖥️ Detalhado (Navegador - Playwright)"],
         horizontal=True)
     modo_rapido = modo.startswith("⚡")
 
@@ -318,14 +413,14 @@ with aba_automacoes:
     for a in analises_salvas:
         if a["total_alertas"] > 0:
             fmt  = a["data_criacao"].strftime("%d/%m/%Y às %H:%M")
-            icon = "⚡" if a.get("modo") == "Rápido" else "🔍"
+            icon = "⚡" if a.get("modo") == "Rápido" else "🖥️"
             opcoes[f"📊 {fmt} — {a['total_alertas']} moderado/crítico — {icon} {a.get('modo','Rápido')} · {a.get('fonte','')}"] = a["id"]
 
     if len(opcoes) > 1:
         escolha = st.selectbox("Carregar moderados/críticos de uma análise salva:",
                                 list(opcoes.keys()), index=0, key="sel_analise_alertas")
         if opcoes[escolha] is not None:
-            if st.button("✅ Carregar seleção desta análise", width="content"):
+            if st.button("Carregar seleção desta análise", width="content"):
                 itens = db.buscar_itens_analise(opcoes[escolha])
                 codigos = [i["codigo_produto"] for i in itens
                            if i["status"] in ["⚠️ Moderado","⚠️ Alerta","🔴 Crítico"]]
@@ -344,7 +439,7 @@ with aba_automacoes:
         gen     = st.session_state['gerenciar_gen']
 
         if modo_rapido:
-            st.markdown("**Selecione os produtos** (ou deixe tudo desmarcado para analisar todos):")
+            st.markdown("**Selecione os produtos**:")
         else:
             st.markdown("**Selecione até 10 produtos para auditar:**")
 
@@ -353,7 +448,7 @@ with aba_automacoes:
             filtro = st.text_input("Filtrar:", placeholder="🔍 Código, Marca, Modelo...",
                                    label_visibility="collapsed", key="filtro_auto")
         with col_lmp:
-            if st.button("🧹 Limpar", width="stretch", key="btn_limpar_sel"):
+            if st.button("Limpar", width="stretch", key="btn_limpar_sel"):
                 st.session_state["codigos_pre_selecionados"] = []
                 st.session_state['gerenciar_gen'] += 1
                 st.rerun()
@@ -411,7 +506,7 @@ with aba_automacoes:
         if not modo_rapido and total_sel > 5:
             st.error(f"Selecionados: {total_sel}. Máximo: 5 no modo Detalhado.")
         else:
-            st.caption(f"{total_sel}/{'sem limite' if modo_rapido else '5'} produtos selecionados.")
+            st.caption(f"{total_sel}/{'30' if modo_rapido else '5'} produtos selecionados.")
 
     tabela_selecao(df_produtos, modo_rapido, COLUNAS_INTERNAS)
 
