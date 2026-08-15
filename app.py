@@ -3,6 +3,7 @@ import pandas as pd
 import database as db
 import rpa_monitor
 import time
+from pathlib import Path
 
 st.set_page_config(page_title="Pricelog ERP", page_icon="💲", layout="wide")
 
@@ -63,8 +64,8 @@ def _get_serpapi_key() -> str | None:
 
 # ── LOGIN ───────────────────────────────────────────────────────────────────
 if not st.session_state['autenticado']:
-    st.title("🔒 Pricelog ERP")
-    st.markdown("Insira suas credenciais para acessar o sistema.")
+    st.title("🔐 Pricelog ERP")
+    st.markdown("Insira suas credenciais para acessar o sistema")
     with st.form("login_form"):
         email = st.text_input("E-mail")
         senha = st.text_input("Senha de Acesso", type="password")
@@ -79,12 +80,34 @@ if not st.session_state['autenticado']:
 
 # ── DASHBOARD ───────────────────────────────────────────────────────────────
 col_titulo, col_sair = st.columns([8.5, 1.5])
+
 with col_titulo:
     st.title("Pricelog Dashboard", anchor=False)
+
 with col_sair:
     if st.button("Sign out", width="stretch"):
-        st.session_state['autenticado'] = False
+        st.session_state["autenticado"] = False
         st.rerun()
+
+    local_admin_path = Path(__file__).with_name("local_admin.py")
+
+    if local_admin_path.exists():
+        if st.button("Admin Panel", width="stretch"):
+
+            @st.dialog(
+                "Admin Panel",
+                width="large",
+            )
+            def abrir_admin():
+                from local_admin import render_local_admin
+
+                render_local_admin(
+                    db,
+                    rpa_monitor,
+                    _get_serpapi_key,
+                )
+
+            abrir_admin()
 
 dados_banco = db.listar_produtos()
 df_produtos = pd.DataFrame(dados_banco)
@@ -439,9 +462,9 @@ with aba_automacoes:
         gen     = st.session_state['gerenciar_gen']
 
         if modo_rapido:
-            st.markdown("**Selecione os produtos**:")
+            st.markdown("**Ou selecione os produtos**:")
         else:
-            st.markdown("**Selecione até 10 produtos para auditar:**")
+            st.markdown("**Ou selecione até 5 produtos para auditar:**")
 
         col_busca, col_aviso_a, col_lmp, col_tudo = st.columns([4, 3, 1.5, 1.5])
         with col_busca:
@@ -636,37 +659,3 @@ with aba_automacoes:
                     cb.metric("⚠️ Moderado", mod)
                     cc.metric("🔴 Crítico",  len(df_it[df_it["Status"] == "🔴 Crítico"]))
                     st.dataframe(df_it, width="stretch", hide_index=True)
-
-    # ── Painel de testes ──────────────────────────────────────────────────────
-    with st.expander("🛠️ Painel de Controle de Testes (Remover antes do Deploy)"):
-        st.subheader("🔑 Diagnóstico de APIs", anchor=False)
-
-        serpapi_key_atual = _get_serpapi_key()
-        if serpapi_key_atual:
-            st.success(f"✅ SerpAPI configurada: `...{serpapi_key_atual[-6:]}`")
-        else:
-            st.error("❌ SerpAPI NÃO encontrada.\n"
-                     "Verifique se secrets.toml tem:\n```\n[serpapi]\napi_key = \"SUA_CHAVE\"\n```")
-
-        produto_teste = st.text_input("Produto para testar:", value="Logitech MX Master 3S",
-                                      key="prod_teste_api")
-        if st.button("🧪 Testar SerpAPI agora", width="content"):
-            if not serpapi_key_atual:
-                st.error("Configure a chave SerpAPI primeiro.")
-            else:
-                with st.spinner("Chamando SerpAPI..."):
-                    resultado = rpa_monitor.testar_serpapi(serpapi_key_atual, produto_teste)
-                st.json(resultado)
-                if resultado.get("total_resultados", 0) > 0:
-                    st.success(f"✅ SerpAPI OK! {resultado['total_resultados']} resultados.")
-                elif resultado.get("erro_api"):
-                    st.error(f"Erro: {resultado['erro_api']}")
-                else:
-                    st.warning("API respondeu mas sem resultados de shopping.")
-
-        st.write("---")
-        st.warning("Apaga TODOS os dados do banco e zera os IDs.")
-        if st.button("🚨 Reset de Fábrica: Apagar Tudo e Zerar IDs"):
-            db.resetar_banco()
-            st.success("Banco resetado com sucesso!")
-            st.rerun()

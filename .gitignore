@@ -4,6 +4,7 @@ __pycache__/
 .streamlit/secrets.toml
 .streamlit/
 .python-version
+local_admin.py
 
 # Outros arquivos temporários
 .DS_Store
