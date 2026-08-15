@@ -64,7 +64,7 @@ def _get_serpapi_key() -> str | None:
 
 # ── LOGIN ───────────────────────────────────────────────────────────────────
 if not st.session_state['autenticado']:
-    st.title("🔐 Pricelog ERP")
+    st.title("🔐 Pricelog ERP", anchor=False)
     st.markdown("Insira suas credenciais para acessar o sistema")
     with st.form("login_form"):
         email = st.text_input("E-mail")
