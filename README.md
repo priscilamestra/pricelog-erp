@@ -11,7 +11,7 @@ The system supports two complementary monitoring strategies:
 - **Fast Mode:** retrieves Google Shopping results through SerpAPI for scalable catalog analysis;
 - **Detailed Mode:** uses Playwright and a real Chromium browser to collect and validate pricing data directly from e-commerce search results.
 
-The project focuses on the engineering challenges behind reliable automation: **external API integration, product entity matching, noisy-data filtering, browser automation, persistence, state management, error handling, and deployment-ready secret management**.
+The project focuses on the engineering challenges behind reliable automation: **external API integration, product entity matching, noisy-data filtering, browser automation, persistence, state management, error handling, and secure configuration management**.
 
 ## Problem
 
@@ -145,7 +145,7 @@ PostgreSQL acts as the persistent state layer used by both the ERP interface and
   <em><strong>Figure 1.</strong> Product management interface backed by PostgreSQL, with catalog search, record editing, structured product data, and persistent storage.</em>
 </p>
 
-### 2. Fast market analysis — SerpAPI
+### 2. Fast Mode - SerpAPI
 
 Fast Mode is designed for broader catalog analysis.
 
@@ -192,180 +192,13 @@ The request layer also includes timeout handling and explicit behavior for cases
 
 Instead of silently falling back to unrelated products, the analysis returns a controlled **Not Found** state.
 
-### 3. Product matching and normalization
-
-One of the main engineering challenges in this project is determining whether a marketplace result represents the same product as the catalog query.
-
-Exact string comparison is not enough.
-
-For example:
-
-```text
-Dell Teclado sem fio KB500
-```
-
-and:
-
-```text
-Dell KB500 Wireless Keyboard
-```
-
-describe the same product even though their text differs significantly.
-
-Before comparison, product names are normalized.
-
-The normalization layer handles differences such as:
-
-```text
-sem fio  -> wireless
-com fio  -> wired
-wi fi    -> wifi
-
-256 GB   -> 256gb
-1 TB     -> 1tb
-```
-
-Accents, punctuation, casing, and unnecessary text differences are also normalized.
-
-The matching engine combines textual similarity with structural validation.
-
-Important identifiers found in the query must also exist in the marketplace result.
-
-This prevents a generic similarity score from incorrectly accepting related but different products.
-
-### 4. Variant-aware matching
-
-Product variants are treated as meaningful identifiers.
-
-The system recognizes terms such as:
-
-```text
-Pro
-Pro Max
-Max
-Plus
-Ultra
-Mini
-Air
-Lite
-FE
-```
-
-A query for:
-
-```text
-iPhone 16 Pro Max
-```
-
-must not accept:
-
-```text
-iPhone 16
-iPhone 16 Pro
-```
-
-even when the titles have high textual similarity.
-
-This provides an additional deterministic validation layer before price aggregation.
-
-### 5. Storage-capacity validation
-
-Storage capacity is also validated structurally.
-
-If the catalog query contains:
-
-```text
-128GB
-```
-
-the system rejects results representing:
-
-```text
-256GB
-512GB
-1TB
-```
-
-as well as listings that ambiguously combine multiple storage variants.
-
-Capacity detection distinguishes probable storage values from smaller values that may represent RAM.
-
-This prevents prices from different product configurations from contaminating the market reference.
-
-### 6. Product-condition filtering
-
-Competitive pricing should compare equivalent product conditions.
-
-Listings containing signals such as:
-
-```text
-used
-seminovo
-refurbished
-renewed
-open box
-caixa aberta
-como novo
-vitrine
-```
-
-are excluded from the price set.
-
-Listings containing indicators such as battery-health percentages can also be rejected when they indicate a second-hand device.
-
-This prevents artificially low used-product prices from distorting the reference price for a new product.
-
-### 7. Statistical price filtering
-
-After product relevance has been validated, the remaining prices are processed statistically.
-
-Pricelog uses **Interquartile Range (IQR)** filtering to reduce the influence of extreme values.
-
-The pipeline follows:
-
-```text
-Validated Product Prices
-          |
-          v
-      Q1 and Q3
-          |
-          v
-          IQR
-          |
-          v
-Remove Statistical Outliers
-          |
-          v
-   Median Market Price
-```
-
-The median is used instead of the arithmetic mean because it is more resistant to isolated extreme prices, temporary promotions, incorrect listings, or stale inventory.
-
-### 8. Price and margin classification
-
-Once a market reference is available, Pricelog compares it with the company's selling price and acquisition cost.
-
-Each analyzed product receives an operational status.
-
-| Status | Meaning |
-|---|---|
-| ✅ OK | Price and margin remain within the configured healthy range |
-| ⚠️ Moderate | Price difference or margin requires attention |
-| 🔴 Critical | Margin or market-price difference exceeds critical thresholds |
-| ⚪ No reference | No compatible market product was found |
-| 🚫 Error | Market data could not be collected successfully |
-
-The minimum acceptable margin can be configured before analysis.
-
-Results are persisted in PostgreSQL together with analysis metadata and expiration information.
-
 ![Pricelog Fast Mode competitive price analysis](img/03-fast-research.png)
 
 <p align="center">
   <em><strong>Figure 2.</strong> Fast Mode competitive analysis using SerpAPI and Google Shopping data, showing validated market prices, internal pricing, margins, and product-level classification.</em>
 </p>
 
-### 9. Detailed browser automation — Playwright
+### 3. Detailed Mode - Playwright browser automation
 
 Detailed Mode provides an alternative collection strategy using Playwright.
 
@@ -407,6 +240,175 @@ This keeps collection and validation separate: **finding a price is not enough �
 <p align="center">
   <em><strong>Figure 3.</strong> Detailed Mode using Playwright and Chromium for browser-based market research, with extracted listings processed through the same product validation and price-analysis pipeline.</em>
 </p>
+
+Both monitoring modes feed candidate listings into the same validation and price-analysis pipeline described below.
+
+### 4. Product matching and normalization
+
+One of the main engineering challenges in this project is determining whether a marketplace result represents the same product as the catalog query.
+
+Exact string comparison is not enough.
+
+For example:
+
+```text
+Dell Teclado sem fio KB500
+```
+
+and:
+
+```text
+Dell KB500 Wireless Keyboard
+```
+
+describe the same product even though their text differs significantly.
+
+Before comparison, product names are normalized.
+
+The normalization layer handles differences such as:
+
+```text
+sem fio  -> wireless
+com fio  -> wired
+wi fi    -> wifi
+
+256 GB   -> 256gb
+1 TB     -> 1tb
+```
+
+Accents, punctuation, casing, and unnecessary text differences are also normalized.
+
+The matching engine combines textual similarity with structural validation.
+
+Important identifiers found in the query must also exist in the marketplace result.
+
+This prevents a generic similarity score from incorrectly accepting related but different products.
+
+### 5. Variant-aware matching
+
+Product variants are treated as meaningful identifiers.
+
+The system recognizes terms such as:
+
+```text
+Pro
+Pro Max
+Max
+Plus
+Ultra
+Mini
+Air
+Lite
+FE
+```
+
+A query for:
+
+```text
+iPhone 16 Pro Max
+```
+
+must not accept:
+
+```text
+iPhone 16
+iPhone 16 Pro
+```
+
+even when the titles have high textual similarity.
+
+This provides an additional deterministic validation layer before price aggregation.
+
+### 6. Storage-capacity validation
+
+Storage capacity is also validated structurally.
+
+If the catalog query contains:
+
+```text
+128GB
+```
+
+the system rejects results representing:
+
+```text
+256GB
+512GB
+1TB
+```
+
+as well as listings that ambiguously combine multiple storage variants.
+
+Capacity detection distinguishes probable storage values from smaller values that may represent RAM.
+
+This prevents prices from different product configurations from contaminating the market reference.
+
+### 7. Product-condition filtering
+
+Competitive pricing should compare equivalent product conditions.
+
+Listings containing signals such as:
+
+```text
+used
+seminovo
+refurbished
+renewed
+open box
+caixa aberta
+como novo
+vitrine
+```
+
+are excluded from the price set.
+
+Listings containing indicators such as battery-health percentages can also be rejected when they indicate a second-hand device.
+
+This prevents artificially low used-product prices from distorting the reference price for a new product.
+
+### 8. Statistical price filtering
+
+After product relevance has been validated, the remaining prices are processed statistically.
+
+Pricelog uses **Interquartile Range (IQR)** filtering to reduce the influence of extreme values.
+
+The pipeline follows:
+
+```text
+Validated Product Prices
+          |
+          v
+      Q1 and Q3
+          |
+          v
+          IQR
+          |
+          v
+Remove Statistical Outliers
+          |
+          v
+   Median Market Price
+```
+
+The median is used instead of the arithmetic mean because it is more resistant to isolated extreme prices, temporary promotions, incorrect listings, or stale inventory.
+
+### 9. Price and margin classification
+
+Once a market reference is available, Pricelog compares it with the company's selling price and acquisition cost.
+
+Each analyzed product receives an operational status.
+
+| Status | Meaning |
+|---|---|
+| ✅ OK | Price and margin remain within the configured healthy range |
+| ⚠️ Moderate | Price difference or margin requires attention |
+| 🔴 Critical | Margin or market-price difference exceeds critical thresholds |
+| ⚪ No reference | No compatible market product was found |
+| 🚫 Error | Market data could not be collected successfully |
+
+The minimum acceptable margin can be configured before analysis.
+
+Results are persisted in PostgreSQL together with analysis metadata and expiration information.
 
 ### 10. Analysis history
 
@@ -518,7 +520,7 @@ The local file:
 
 is excluded from version control.
 
-No production credential should be committed to the repository.
+Credentials and API keys must not be committed to the repository.
 
 ### Local-only administration
 
@@ -533,7 +535,7 @@ The local administration module can:
 
 The module is intentionally excluded from Git version control and is loaded only when the local file exists.
 
-This keeps development tooling available without exposing destructive administrative actions in the deployed application.
+This keeps development tooling available without exposing destructive administrative actions through the public repository.
 
 ## Data Model
 
@@ -700,26 +702,6 @@ The local application will normally be available at:
 http://localhost:8501
 ```
 
-## Deployment
-
-The application can be deployed to Streamlit Community Cloud or another Python hosting environment.
-
-For cloud deployment, the PostgreSQL instance must be reachable from the deployment environment.
-
-A local configuration such as:
-
-```toml
-host = "localhost"
-```
-
-works only when Streamlit and PostgreSQL are running on the same machine.
-
-A remote deployment therefore requires a network-accessible PostgreSQL instance or an environment where PostgreSQL is deployed alongside the application.
-
-Secrets must be configured through the hosting platform and must never be committed to GitHub.
-
-Browser-based Detailed Mode may require deployment-specific Playwright and Chromium configuration depending on the hosting environment.
-
 ## Extensibility
 
 The collection and matching layers were intentionally kept separate.
@@ -780,14 +762,13 @@ It demonstrates:
 - CSV ingestion;
 - secret management;
 - modular system design;
-- deployment-aware engineering;
 - Git-based development workflow.
 
 The project also demonstrates an important part of **AI and automation engineering beyond model calls**: building reliable systems around imperfect external data.
 
-In production AI systems, model quality alone is not enough. Data must be collected, normalized, validated, persisted, monitored, and handled safely when external services fail or return ambiguous information.
+In production-grade automation and AI systems, model or provider quality alone is not enough. Data must be collected, normalized, validated, persisted, and handled safely when external services fail or return ambiguous information.
 
-Pricelog applies those same engineering principles to a deterministic price-intelligence system.
+Pricelog applies those engineering principles to a deterministic price-intelligence system.
 
 ## License
 
