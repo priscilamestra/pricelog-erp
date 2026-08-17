@@ -696,12 +696,6 @@ The secrets file must remain outside version control.
 uv run streamlit run app.py
 ```
 
-The local application will normally be available at:
-
-```text
-http://localhost:8501
-```
-
 ## Extensibility
 
 The collection and matching layers were intentionally kept separate.
