@@ -50,10 +50,13 @@ The system:
 
 The architecture separates **interface, persistence, market-data collection, matching logic, and analysis processing**, making the system easier to maintain and extend.
 
-
-<!-- Add image: main Pricelog dashboard overview -->
-
-***Figure 1.*** *Pricelog ERP dashboard showing product management and competitive price monitoring workflows.*
+<p align="center">
+  <img src="img/01-pricelog-demo.gif"
+       alt="Pricelog ERP end-to-end demo"
+       width="100%">
+  <br>
+  <em><strong>Demo.</strong> Pricelog running end-to-end, from product management to competitive market analysis, price comparison, margin calculation, and classification.</em>
+</p>
 
 ## Architecture
 
@@ -138,10 +141,13 @@ The management interface supports:
 
 PostgreSQL acts as the persistent state layer used by both the ERP interface and the price-monitoring workflows.
 
-
-<!-- Add image: product catalog / management screen -->
-
-***Figure 2.*** *Product catalog management interface with structured PostgreSQL-backed records, search, editing, and CSV import.*
+<p align="center">
+  <img src="img/02-product-management.png"
+       alt="Pricelog product management interface"
+       width="100%">
+  <br>
+  <em><strong>Figure 1.</strong> Product management interface backed by PostgreSQL, with catalog search, record editing, structured product data, and persistent storage.</em>
+</p>
 
 ### 2. Fast market analysis — SerpAPI
 
@@ -357,10 +363,13 @@ The minimum acceptable margin can be configured before analysis.
 
 Results are persisted in PostgreSQL together with analysis metadata and expiration information.
 
-
-<!-- Add image: Fast Mode analysis results -->
-
-***Figure 3.*** *Fast competitive analysis using Google Shopping data, structural product matching, market-price estimation, and margin classification.*
+<p align="center">
+  <img src="img/03-fast-research.png"
+       alt="Pricelog Fast Mode competitive price analysis"
+       width="100%">
+  <br>
+  <em><strong>Figure 2.</strong> Fast Mode competitive analysis using SerpAPI and Google Shopping data, showing validated market prices, internal pricing, margins, and product-level classification.</em>
+</p>
 
 ### 9. Detailed browser automation — Playwright
 
@@ -399,6 +408,14 @@ Extracted product titles and prices still pass through the same relevance and pr
 
 This keeps collection and validation separate: **finding a price is not enough — the product must first be proven relevant to the query.**
 
+<p align="center">
+  <img src="img/03-fast-research.png"
+       alt="Pricelog Fast Mode competitive price analysis"
+       width="100%">
+  <br>
+  <em><strong>Figure 2.</strong> Fast Mode competitive analysis using SerpAPI and Google Shopping data, showing validated market prices, internal pricing, margins, and product-level classification.</em>
+</p>
+
 ### 10. Analysis history
 
 Completed analyses are stored in PostgreSQL.
@@ -420,10 +437,13 @@ Previous analyses can be reused to focus new monitoring sessions on Moderate and
 
 Analysis records use an expiration lifecycle to prevent indefinite accumulation of temporary monitoring data.
 
-
-<!-- Add image: analysis history / Detailed Mode -->
-
-***Figure 4.*** *Stored price-monitoring results and historical analysis used to identify products that require further review.*
+<p align="center">
+  <img src="img/05-analysis-history.png"
+       alt="Pricelog analysis history"
+       width="100%">
+  <br>
+  <em><strong>Figure 4.</strong> Persistent analysis history showing previous monitoring runs, data sources, analyzed products, alerts, and stored competitive-pricing results.</em>
+</p>
 
 ## Reliability and Engineering Decisions
 
